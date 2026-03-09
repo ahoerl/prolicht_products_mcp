@@ -34,6 +34,16 @@ def _key_or_value(x: Union[str, Dict[str, Any], None]) -> Optional[str]:
     return None
 
 
+def _first_nonempty_sku(items: Any) -> Optional[str]:
+    if not isinstance(items, list):
+        return None
+    for raw in items:
+        s = str(raw).strip()
+        if s:
+            return s
+    return None
+
+
 def fetch_product_details_by_ids(
     product_ids: List[str],
     product_family: Optional[str] = None,
@@ -123,6 +133,7 @@ def prune_details(response: Dict[str, Any]) -> Dict[str, Any]:
 
     for item in data:
         attrs = item.get("attributes", {})
+        contained_skus = attrs.get("contained_article_skus") or []
         trimmed.append(
             {
                 "product_id": attrs.get("id"),
@@ -130,9 +141,11 @@ def prune_details(response: Dict[str, Any]) -> Dict[str, Any]:
                 "family_id": attrs.get("product_family_id"),
                 "mounting_type": attrs.get("mounting_type"),
                 "lighting_category": attrs.get("lighting_category"),
-                "system_sku": derive_system_sku(attrs.get("contained_article_skus") or [])
+                "system_sku": derive_system_sku(contained_skus)
                 if bool(attrs.get("is_system", False))
                 else None,
+                "primary_article_sku": _first_nonempty_sku(contained_skus),
+                "contained_article_skus_count": len(contained_skus),
                 "electrical": attrs.get("electrical"),
                 "lighting": attrs.get("lighting"),
                 "dimensions": attrs.get("dimensions"),

@@ -15,9 +15,24 @@ except Exception:  # pragma: no cover
     Retry = None  # type: ignore
 
 
+DEFAULT_API_V1_URL = os.getenv(
+    "API_V1_URL",
+    "https://webapi.dev.prolicht.at/api/v1",
+)
+
 DEFAULT_PRODUCTS_API_URL = os.getenv(
     "PRODUCTS_API_URL",
-    "https://webapi.dev.prolicht.at/api/v1/products",
+    f"{DEFAULT_API_V1_URL}/products",
+)
+
+DEFAULT_ARTICLES_API_URL = os.getenv(
+    "ARTICLES_API_URL",
+    f"{DEFAULT_API_V1_URL}/articles",
+)
+
+DEFAULT_VISUALS_API_URL = os.getenv(
+    "VISUALS_API_URL",
+    f"{DEFAULT_API_V1_URL}/visuals",
 )
 
 DEFAULT_FILTERS_API_URL = DEFAULT_PRODUCTS_API_URL + "/filters"
@@ -252,3 +267,67 @@ def api_get(
             "url": url,
             "params": params,
         }
+
+
+def api_get_binary(
+    url: str,
+    params: Dict[str, Any],
+    timeout: Union[int, float, Tuple[float, float], None] = None,
+    accept: str = "*/*",
+) -> Dict[str, Any]:
+    """GET wrapper for native/binary downloads.
+
+    Returns a dict containing response metadata and raw bytes in ``content`` on success,
+    or an ``error`` dict on failure. Intended for endpoints such as
+    /articles/{sku}/downloads/{type} that do not return JSON.
+    """
+
+    headers = {"Accept": accept}
+    t = _normalize_timeout(timeout)
+
+    try:
+        sess = _get_session()
+        resp = sess.get(url, headers=headers, params=params, timeout=t)
+    except requests.exceptions.Timeout as e:
+        return {
+            "error": "Request timed out",
+            "error_type": e.__class__.__name__,
+            "url": url,
+            "params": params,
+            "timeout": {"connect": t[0], "read": t[1]},
+        }
+    except requests.exceptions.RequestException as e:
+        return {
+            "error": "Request failed",
+            "error_type": e.__class__.__name__,
+            "details": str(e),
+            "url": url,
+            "params": params,
+            "timeout": {"connect": t[0], "read": t[1]},
+        }
+
+    if not (200 <= resp.status_code < 300):
+        body_preview = None
+        try:
+            body_preview = resp.text[:500]
+        except Exception:
+            body_preview = None
+
+        return {
+            "error": "Non-success status code",
+            "status_code": resp.status_code,
+            "url": url,
+            "params": params,
+            "body_preview": body_preview,
+        }
+
+    return {
+        "status_code": resp.status_code,
+        "url": url,
+        "params": params,
+        "content": resp.content,
+        "content_type": resp.headers.get("Content-Type"),
+        "content_length": resp.headers.get("Content-Length"),
+        "content_disposition": resp.headers.get("Content-Disposition"),
+        "headers": dict(resp.headers),
+    }

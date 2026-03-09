@@ -76,72 +76,12 @@ def _range_min_max(rng: Any) -> Dict[str, Optional[float]]:
 
 
 def prune_products_list(api_response: Dict[str, Any]) -> Dict[str, Any]:
-    """Return a compact, LLM-friendly view of /products list results.
+    """Return the same compact product-card schema used by search_products.
 
-    We keep only fields that are useful for:
-    - selecting a product variant
-    - resolving the ITEM endpoint later (numeric_product_id + mounting_type + lighting_category)
-    - detecting systems (is_system) and getting contained_article_skus (needed for inserts)
-
-    Anything else can be fetched later via get_product_details.
+    This keeps grouped-family answers consistent with the main product search tool so an LLM can
+    reuse the same field expectations across both tools.
     """
-    meta = api_response.get("meta", {}) or {}
-    data = api_response.get("data", []) or []
-
-    results: List[Dict[str, Any]] = []
-    for item in data:
-        attrs = item.get("attributes", {}) or {}
-
-        mounting_key = _key_or_value(attrs.get("mounting_type"))
-        lighting_key = _key_or_value(attrs.get("lighting_category"))
-
-        electrical = attrs.get("electrical", {}) or {}
-        lighting = attrs.get("lighting", {}) or {}
-        categ = attrs.get("categorization", {}) or {}
-
-        is_system = bool(attrs.get("is_system", False))
-        skus = attrs.get("contained_article_skus") or []
-
-        entry: Dict[str, Any] = {
-            "product_name": attrs.get("id"),
-            "numeric_product_id": attrs.get("numeric_product_id"),
-            "product_family_id": attrs.get("product_family_id"),
-            "mounting_type": mounting_key,
-            "lighting_category": lighting_key,
-            "is_system": is_system,
-            "product_categories": _key_list(categ.get("product_categories")),
-            "ip_rates": _key_list(categ.get("ip_rates")),
-            "dimmability": _key_list(electrical.get("dimmability_types")),
-            "luminous_flux_lm": _range_min_max(lighting.get("real_luminous_flux_range")),
-            "power_w": _range_min_max(electrical.get("total_power_range")),
-            "lumen_per_watt": _range_min_max(lighting.get("lumen_per_watt_range")),
-        }
-
-        # Systems are containers; technical fields below refer to inserts, not to the system itself.
-        if is_system:
-            for _k in ("ip_rates", "dimmability", "luminous_flux_lm", "power_w", "lumen_per_watt"):
-                entry.pop(_k, None)
-
-        # contained_article_skus can be huge:
-        # - For systems it is REQUIRED (needed to fetch inserts/components later).
-        # - For luminaires we return only the count.
-        if is_system:
-            entry["contained_article_skus"] = [str(s) for s in skus if str(s).strip()]
-        else:
-            entry["contained_article_skus_count"] = len(skus)
-
-        results.append(entry)
-
-    return {
-        "meta": {
-            "lang": meta.get("lang"),
-            "limit": meta.get("limit"),
-            "offset": meta.get("offset"),
-            "total_items": meta.get("total_items"),
-            "returned_items": len(results),
-        },
-        "results": results,
-    }
+    return products_backend.prune_product_list(api_response)
 
 
 def _fetch_all_family_keys(language: str = "en") -> List[str]:

@@ -70,6 +70,16 @@ def _range_min_max(rng: Any) -> Dict[str, Optional[float]]:
     return {"min": min(vals), "max": max(vals)}
 
 
+def _first_nonempty_sku(items: Any) -> Optional[str]:
+    if not isinstance(items, list):
+        return None
+    for raw in items:
+        s = str(raw).strip()
+        if s:
+            return s
+    return None
+
+
 def prune_product_list(api_response: Dict[str, Any]) -> Dict[str, Any]:
     """Prune /products (LIST) response into a compact schema for LLMs.
 
@@ -100,6 +110,7 @@ def prune_product_list(api_response: Dict[str, Any]) -> Dict[str, Any]:
 
         is_system = bool(attrs.get("is_system", False))
         contained_skus = attrs.get("contained_article_skus") or []
+        primary_article_sku = _first_nonempty_sku(contained_skus)
 
         # Upstream may return system_sku for inserts (non-systems)
         upstream_system_sku = attrs.get("system_sku")
@@ -121,6 +132,7 @@ def prune_product_list(api_response: Dict[str, Any]) -> Dict[str, Any]:
             "applications": _key_list(categ.get("applications")),
             "segments": _key_list(categ.get("segments")),
             "target_groups": _key_list(categ.get("target_groups")),
+            "primary_article_sku": primary_article_sku,
         }
 
         if is_system:
